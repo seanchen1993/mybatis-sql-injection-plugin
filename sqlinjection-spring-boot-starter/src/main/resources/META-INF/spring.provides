@@ -1,1 +1,1 @@
-provides: sqlinjection-spring-boot-autoconfigure,mybatis-spring-boot-autoconfigure,mybatis,mybatis-spring
+provides: sqlinjection-spring-boot-autoconfigure
