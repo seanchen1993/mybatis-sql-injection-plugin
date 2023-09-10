@@ -43,8 +43,8 @@ public class SqlInjectionUtils {
             + "|UPDATE.+?SET"
             + "|INSERT\\s+INTO.+?VALUES"
             + "|(SELECT|DELETE).+?FROM|(CREATE|ALTER|DROP|TRUNCATE)\\s+(TABLE|DATABASE)"
-            + "|\\b(alert\\(|confirm\\(|expression\\(|prompt\\(|benchmark\\s*?\\(.*\\)|sleep\\s*?\\(.*\\)|load_file\\s*\\()"
-            + "|updatexml\\s*?\\(.*\\)|extractvalue\\s*?\\(.*\\)|floor\\s*?\\(.*\\)";
+            + "|\\b(alert\\(|confirm\\(|expression\\(|prompt\\(|benchmark\\s*?\\(.*\\)|sleep\\s*?\\(.*\\)|load_file\\s*?\\()"
+            + "|\\b(updatexml\\s*?\\(.*\\)|extractvalue\\s*?\\(.*\\)|floor\\s*?\\(.*\\))";
     private static final Pattern SQL_INJECTION_PATTERN = Pattern.compile(SQL_INJECTION_REGEX, Pattern.CASE_INSENSITIVE);
 
     private SqlInjectionUtils() {
