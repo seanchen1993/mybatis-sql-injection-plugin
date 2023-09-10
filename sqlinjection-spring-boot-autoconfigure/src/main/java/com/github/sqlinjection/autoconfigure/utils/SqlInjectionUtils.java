@@ -27,7 +27,6 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 
-
 /**
  * @author sean chen
  * @date 2023/9/3 10:22 PM
@@ -52,6 +51,7 @@ public class SqlInjectionUtils {
 
     /**
      * Check if the given sql has sql injection risk
+     *
      * @param sql The input sql
      * @return {@code true} if the sql is safe
      */
