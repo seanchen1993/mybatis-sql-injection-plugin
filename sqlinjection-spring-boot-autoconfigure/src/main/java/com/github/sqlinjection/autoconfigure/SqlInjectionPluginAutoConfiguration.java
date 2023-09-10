@@ -27,6 +27,7 @@ import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.dialect.clickhouse.parser.ClickhouseSelectParser;
 import com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -34,6 +35,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+
+import java.util.Collections;
+import java.util.List;
 
 import static com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties.SQL_INJECTION_PREFIX;
 import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET;
@@ -58,5 +62,12 @@ public class SqlInjectionPluginAutoConfiguration {
     @ConditionalOnMissingBean
     public PermitAndDenyCustomizer permitAndDenyCustomizer() {
         return new PermitAndDenyCustomizer();
+    }
+
+    @Bean
+    public StartupSqlInjectionPlugin startupSqlInjectionPlugin(ObjectProvider<List<SqlSessionFactory>> sqlSessionFactories,
+                                                               SqlInjectionProperties properties,
+                                                               PermitAndDenyCustomizer customizer) {
+        return new StartupSqlInjectionPlugin(sqlSessionFactories.getIfAvailable(Collections::emptyList), properties, customizer);
     }
 }

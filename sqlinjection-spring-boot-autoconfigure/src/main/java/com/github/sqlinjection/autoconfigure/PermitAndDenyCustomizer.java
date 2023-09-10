@@ -41,6 +41,7 @@ public class PermitAndDenyCustomizer extends WallConfig {
             Collections.singletonMap("mysql", new HashSet<>(Arrays.asList("extractvalue", "updatexml"))));
 
     private Map<String, Set<String>> database2DenyFunctions = new LinkedHashMap<>();
+
     private Map<String, Set<String>> database2DenyTables = new LinkedHashMap<>();
 
     private Map<String, Set<String>> database2DenySchemas = new LinkedHashMap<>();
@@ -50,6 +51,7 @@ public class PermitAndDenyCustomizer extends WallConfig {
     private Map<String, Set<String>> database2DenyObjects = new LinkedHashMap<>();
 
     private Map<String, Set<String>> database2PermitFunctions = new LinkedHashMap<>();
+
     private Map<String, Set<String>> database2PermitTables = new LinkedHashMap<>();
 
     private Map<String, Set<String>> database2PermitSchemas = new LinkedHashMap<>();
