@@ -24,6 +24,7 @@
 package com.github.sqlinjection.autoconfigure;
 
 import com.alibaba.druid.DbType;
+import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.druid.wall.Violation;
 import com.alibaba.druid.wall.WallCheckResult;
 import com.alibaba.druid.wall.WallProvider;
@@ -38,13 +39,13 @@ import org.apache.ibatis.reflection.SystemMetaObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.ibatis.mapping.StatementType.CALLABLE;
 
@@ -67,7 +68,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
 
     private static final String STATEMENT_HANDLER_DELEGATE_BOUND_SQL = "delegate.boundSql";
     private final Object sqlInjectionPluginMonitor = new Object();
-    private final AtomicInteger currentErrorCount = new AtomicInteger(0);
+    private volatile int currentErrorCount = 0;
     private SqlInjectionProperties properties;
     private PermitAndDenyCustomizer customizer;
     private volatile WallProvider wallProvider;
@@ -163,9 +164,59 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
 
 
     private boolean initDruidWallProvider(MappedStatement mappedStatement) {
+        if (invalidExecuteTimes()) {
+            return false;
+        }
 
+        if (wallProvider == null) {
+            synchronized (sqlInjectionPluginMonitor) {
+                // double check
+                if (wallProvider == null) {
+                    try {
+                        if (invalidExecuteTimes()) {
+                            return false;
+                        }
 
-        return false;
+                        DataSource dataSource = mappedStatement.getConfiguration().getEnvironment().getDataSource();
+
+                        String url = getUrl(dataSource);
+
+                        String dbTypeName = JdbcUtils.getDbType(url, null);
+                        if (dbTypeName ==null) {
+                            LOGGER.info("The db type is not supported, url: {}", url);
+                            currentErrorCount++;
+                            return false;
+                        }
+
+                        dbType = DbType.of(dbTypeName);
+
+                        //init wall provider
+                        wallProvider = createWallProvider(dbType, customizer, url);
+
+                    } catch (Throwable throwable) {
+                        LOGGER.error("Init druid wall provider error.", throwable);
+                        currentErrorCount++;
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private WallProvider createWallProvider(DbType dbType, PermitAndDenyCustomizer customizer, String url) {
+        return null;
+    }
+
+    private boolean invalidExecuteTimes() {
+        return currentErrorCount > MAX_ERROR_EXECUTE_COUNT;
+    }
+
+    private String getUrl(DataSource dataSource) throws SQLException {
+        try(Connection connection = dataSource.getConnection()) {
+            return connection.getMetaData().getURL();
+        }
     }
 
 }
