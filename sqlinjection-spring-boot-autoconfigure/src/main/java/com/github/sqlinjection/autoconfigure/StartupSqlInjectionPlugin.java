@@ -47,7 +47,7 @@ public class StartupSqlInjectionPlugin {
 
                 SqlInjectionPluginInterceptor interceptor = new SqlInjectionPluginInterceptor(properties, customizer);
 
-                if (containsMybatisInterceptor(configuration, interceptor)) {
+                if (!containsMybatisInterceptor(configuration, interceptor)) {
                     configuration.addInterceptor(interceptor);
                 }
 

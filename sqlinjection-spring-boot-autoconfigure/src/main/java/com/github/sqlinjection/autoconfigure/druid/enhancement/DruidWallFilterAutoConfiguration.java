@@ -21,24 +21,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package com.github.sqlinjection.autoconfigure;
+package com.github.sqlinjection.autoconfigure.druid.enhancement;
 
 import com.alibaba.druid.DbType;
+import com.alibaba.druid.pool.DruidDataSource;
 import com.alibaba.druid.sql.dialect.clickhouse.parser.ClickhouseSelectParser;
+import com.alibaba.druid.wall.WallConfig;
+import com.alibaba.druid.wall.WallFilter;
+import com.github.sqlinjection.autoconfigure.PermitAndDenyCustomizer;
+import com.github.sqlinjection.autoconfigure.StartupSqlInjectionPlugin;
+import com.github.sqlinjection.autoconfigure.druid.DruidWallFilterProperties;
 import com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.boot.autoconfigure.condition.*;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.core.Ordered;
 
 import java.util.Collections;
 import java.util.List;
 
+import static com.github.sqlinjection.autoconfigure.druid.DruidWallFilterProperties.DRUID_FILTER_WALL_PREFIX;
 import static com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties.SQL_INJECTION_PREFIX;
 import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET;
 
@@ -48,26 +58,31 @@ import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebA
  */
 
 @Configuration
-@ConditionalOnProperty(prefix = SQL_INJECTION_PREFIX, value = "enabled", havingValue = "true", matchIfMissing = true)
-@ConditionalOnBean(SqlSessionFactory.class)
+@ConditionalOnProperty(prefix = DRUID_FILTER_WALL_PREFIX, value = "enabled", havingValue = "true")
+@ConditionalOnBean(DruidDataSource.class)
 @ConditionalOnClass({DbType.class, ClickhouseSelectParser.class})
-@AutoConfigureOrder(Ordered.LOWEST_PRECEDENCE)
+@AutoConfigureAfter(DataSourceAutoConfiguration.class)
 @ConditionalOnWebApplication(type = SERVLET)
-@EnableConfigurationProperties(SqlInjectionProperties.class)
-public class SqlInjectionPluginAutoConfiguration {
+@EnableConfigurationProperties(DruidWallFilterProperties.class)
+public class DruidWallFilterAutoConfiguration {
 
 
     @Bean
-    @ConfigurationProperties(SQL_INJECTION_PREFIX + ".config")
+    @ConfigurationProperties(DRUID_FILTER_WALL_PREFIX + ".config")
     @ConditionalOnMissingBean
-    public PermitAndDenyCustomizer permitAndDenyCustomizer() {
-        return new PermitAndDenyCustomizer();
+    public WallConfig wallConfig() {
+        return new WallConfig();
     }
 
     @Bean
-    public StartupSqlInjectionPlugin startupSqlInjectionPlugin(ObjectProvider<List<SqlSessionFactory>> sqlSessionFactories,
-                                                               SqlInjectionProperties properties,
-                                                               PermitAndDenyCustomizer customizer) {
-        return new StartupSqlInjectionPlugin(sqlSessionFactories.getIfAvailable(Collections::emptyList), properties, customizer);
+    @ConfigurationProperties(DRUID_FILTER_WALL_PREFIX + ".startup")
+    @ConditionalOnMissingBean
+    public WallFilter wallFilter(WallConfig wallConfig) {
+        WallFilter wallFilter = new WallFilter();
+        wallFilter.setConfig(wallConfig);
+        return wallFilter;
     }
+
+
+
 }
