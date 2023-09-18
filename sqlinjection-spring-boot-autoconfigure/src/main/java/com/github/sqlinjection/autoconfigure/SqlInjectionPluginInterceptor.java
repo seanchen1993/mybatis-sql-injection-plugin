@@ -32,6 +32,7 @@ import com.alibaba.druid.wall.WallProvider;
 import com.alibaba.druid.wall.spi.*;
 import com.alibaba.druid.wall.violation.SyntaxErrorViolation;
 import com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties;
+import com.github.sqlinjection.autoconfigure.utils.JsonUtils;
 import org.apache.ibatis.executor.statement.StatementHandler;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.mapping.MappedStatement;
@@ -40,15 +41,16 @@ import org.apache.ibatis.reflection.MetaObject;
 import org.apache.ibatis.reflection.SystemMetaObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.List;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
+import java.util.function.Consumer;
 
+import static com.github.sqlinjection.autoconfigure.PermitAndDenyCustomizer.DEFAULT_MYSQL_DENY_FUNCTIONS;
 import static org.apache.ibatis.mapping.StatementType.CALLABLE;
 
 /**
@@ -71,8 +73,8 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     private static final String STATEMENT_HANDLER_DELEGATE_BOUND_SQL = "delegate.boundSql";
     private final Object sqlInjectionPluginMonitor = new Object();
     private volatile int currentErrorCount = 0;
-    private SqlInjectionProperties properties;
-    private PermitAndDenyCustomizer customizer;
+    private final SqlInjectionProperties properties;
+    private final PermitAndDenyCustomizer customizer;
     private volatile WallProvider wallProvider;
     private volatile DbType dbType;
 
@@ -273,6 +275,108 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
 
 
     private WallConfig getWallConfig(DbType dbType, PermitAndDenyCustomizer customizer, String defaultConfigDir) {
-        return null;
+        WallConfig wallConfig = JsonUtils.convertValue(customizer, WallConfig.class);
+
+        clearWallConfig(wallConfig);
+
+        wallConfig.setDir(defaultConfigDir);
+
+        wallConfig.init();
+
+        applyCustomizerFunctions(wallConfig, customizer, dbType);
+
+        return wallConfig;
+    }
+
+
+    private void clearWallConfig(WallConfig config) {
+        config.getDenyFunctions().clear();
+        config.getDenyTables().clear();
+        config.getDenySchemas().clear();
+        config.getDenyVariants().clear();
+        config.getDenyObjects().clear();
+        config.getPermitFunctions().clear();
+        config.getPermitTables().clear();
+        config.getPermitSchemas().clear();
+        config.getPermitVariants().clear();
+        config.getReadOnlyTables().clear();
+    }
+
+
+    private void applyCustomizerFunctions(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
+        applyFunctions(wallConfig, customizer, dbType);
+        applyTables(wallConfig, customizer, dbType);
+        applySchemas(wallConfig, customizer, dbType);
+        applyVariants(wallConfig, customizer, dbType);
+        applyDenyObjects(wallConfig, customizer, dbType);
+        applyReadOnlyTables(wallConfig, customizer, dbType);
+        wallConfig.setTenantCallBack(customizer.getTenantCallBack());
+        wallConfig.setUpdateCheckHandler(customizer.getUpdateCheckHandler());
+    }
+
+
+    private void applyFunctions(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
+        Set<String> denyFunctions = wallConfig.getDenyFunctions();
+        Set<String> permitFunctions = wallConfig.getPermitFunctions();
+        //default deny functions
+        dataOperator(DEFAULT_MYSQL_DENY_FUNCTIONS, dbType, dataConsumer(denyFunctions, permitFunctions));
+        //custom permit and deny functions
+        dataOperator(customizer.getDatabase2PermitFunctions(), dbType, dataConsumer(permitFunctions, denyFunctions));
+        dataOperator(customizer.getDatabase2DenyFunctions(), dbType, dataConsumer(denyFunctions, permitFunctions));
+    }
+
+    private void applyTables(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
+        Set<String> permitTables = wallConfig.getPermitTables();
+        Set<String> denyTables = wallConfig.getDenyTables();
+        //permit
+        dataOperator(customizer.getDatabase2PermitTables(), dbType, dataConsumer(permitTables, denyTables));
+        //deny
+        dataOperator(customizer.getDatabase2DenyTables(), dbType, dataConsumer(denyTables, permitTables));
+    }
+
+    private void applySchemas(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
+        Set<String> permitSchemas = wallConfig.getPermitSchemas();
+        Set<String> denySchemas = wallConfig.getDenySchemas();
+        //permit
+        dataOperator(customizer.getDatabase2PermitSchemas(), dbType, dataConsumer(permitSchemas, denySchemas));
+        //deny
+        dataOperator(customizer.getDatabase2DenySchemas(), dbType, dataConsumer(denySchemas, permitSchemas));
+    }
+
+    private void applyVariants(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
+        Set<String> permitVariants = wallConfig.getPermitVariants();
+        Set<String> denyVariants = wallConfig.getDenyVariants();
+        //permit
+        dataOperator(customizer.getDatabase2PermitVariants(), dbType, dataConsumer(permitVariants, denyVariants));
+        //deny
+        dataOperator(customizer.getDatabase2DenyVariants(), dbType, dataConsumer(denyVariants, permitVariants));
+    }
+
+    private void applyDenyObjects(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
+        Set<String> denyObjects = wallConfig.getDenyObjects();
+        //deny objects
+        dataOperator(customizer.getDatabase2DenyObjects(), dbType, dataConsumer(denyObjects, null));
+    }
+
+    private void applyReadOnlyTables(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
+        Set<String> readOnlyTables = wallConfig.getReadOnlyTables();
+        //read only tables
+        dataOperator(customizer.getDatabase2ReadOnlyObjects(), dbType, dataConsumer(readOnlyTables, null));
+    }
+
+    private void dataOperator(Map<String, Set<String>> customMap, DbType type, Consumer<Set<String>> consumer) {
+        Optional.ofNullable(customMap)
+                .map(map -> map.get(type.name()))
+                .ifPresent(consumer);
+    }
+
+    private Consumer<Set<String>> dataConsumer(Set<String> addAllSet, @Nullable Set<String> removeAllSet) {
+        return data -> {
+            addAllSet.addAll(data);
+
+            if (removeAllSet != null) {
+                removeAllSet.removeAll(data);
+            }
+        };
     }
 }

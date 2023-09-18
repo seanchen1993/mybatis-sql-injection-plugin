@@ -42,4 +42,8 @@ public class JsonUtils {
     }
 
 
+    public static <T> T convertValue(Object fromValue, Class<T> toValueType) {
+        return MAPPER.convertValue(fromValue, toValueType);
+    }
+
 }
