@@ -58,7 +58,7 @@ public class PermitAndDenyCustomizer extends WallConfig {
 
     private Map<String, Set<String>> database2PermitVariants = new LinkedHashMap<>();
 
-    private Map<String, Set<String>> database2ReadOnlyObjects = new LinkedHashMap<>();
+    private Map<String, Set<String>> database2ReadOnlyTables = new LinkedHashMap<>();
 
 
     public Map<String, Set<String>> getDatabase2DenyFunctions() {
@@ -133,11 +133,11 @@ public class PermitAndDenyCustomizer extends WallConfig {
         this.database2PermitVariants = database2PermitVariants;
     }
 
-    public Map<String, Set<String>> getDatabase2ReadOnlyObjects() {
-        return database2ReadOnlyObjects;
+    public Map<String, Set<String>> getDatabase2ReadOnlyTables() {
+        return database2ReadOnlyTables;
     }
 
-    public void setDatabase2ReadOnlyObjects(Map<String, Set<String>> database2ReadOnlyObjects) {
-        this.database2ReadOnlyObjects = database2ReadOnlyObjects;
+    public void setDatabase2ReadOnlyTables(Map<String, Set<String>> database2ReadOnlyTables) {
+        this.database2ReadOnlyTables = database2ReadOnlyTables;
     }
 }

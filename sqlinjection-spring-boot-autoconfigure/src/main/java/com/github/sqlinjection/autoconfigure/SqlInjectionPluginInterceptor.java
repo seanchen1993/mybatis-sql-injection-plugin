@@ -361,7 +361,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     private void applyReadOnlyTables(WallConfig wallConfig, PermitAndDenyCustomizer customizer, DbType dbType) {
         Set<String> readOnlyTables = wallConfig.getReadOnlyTables();
         //read only tables
-        dataOperator(customizer.getDatabase2ReadOnlyObjects(), dbType, dataConsumer(readOnlyTables, null));
+        dataOperator(customizer.getDatabase2ReadOnlyTables(), dbType, dataConsumer(readOnlyTables, null));
     }
 
     private void dataOperator(Map<String, Set<String>> customMap, DbType type, Consumer<Set<String>> consumer) {

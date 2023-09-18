@@ -23,6 +23,7 @@
  */
 package com.github.sqlinjection.autoconfigure.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -46,4 +47,11 @@ public class JsonUtils {
         return MAPPER.convertValue(fromValue, toValueType);
     }
 
+    public static <T> T readValue(Object content, Class<T> valueType) {
+        try {
+            return MAPPER.readValue(MAPPER.writeValueAsString(content), valueType);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
