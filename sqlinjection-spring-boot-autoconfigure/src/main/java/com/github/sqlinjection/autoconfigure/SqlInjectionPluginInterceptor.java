@@ -72,9 +72,9 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
 
     private static final String STATEMENT_HANDLER_DELEGATE_BOUND_SQL = "delegate.boundSql";
     private final Object sqlInjectionPluginMonitor = new Object();
-    private volatile int currentErrorCount = 0;
     private final SqlInjectionProperties properties;
     private final PermitAndDenyCustomizer customizer;
+    private volatile int currentErrorCount = 0;
     private volatile WallProvider wallProvider;
     private volatile DbType dbType;
 
@@ -186,7 +186,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
                         String url = getUrl(dataSource);
 
                         String dbTypeName = JdbcUtils.getDbType(url, null);
-                        if (dbTypeName ==null) {
+                        if (dbTypeName == null) {
                             LOGGER.info("The db type is not supported, url: {}", url);
                             currentErrorCount++;
                             return false;
@@ -234,7 +234,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
                 break;
             case sqlserver:
             case jtds:
-                config =  getWallConfig(dbType, customizer, SQLServerWallProvider.DEFAULT_CONFIG_DIR);
+                config = getWallConfig(dbType, customizer, SQLServerWallProvider.DEFAULT_CONFIG_DIR);
                 provider = new SQLServerWallProvider(config);
                 break;
             case postgresql:
@@ -242,7 +242,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
             case polardb:
             case greenplum:
             case gaussdb:
-                config =  getWallConfig(dbType, customizer, PGWallProvider.DEFAULT_CONFIG_DIR);
+                config = getWallConfig(dbType, customizer, PGWallProvider.DEFAULT_CONFIG_DIR);
                 provider = new PGWallProvider(config);
                 break;
             case db2:
@@ -268,7 +268,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     }
 
     private String getUrl(DataSource dataSource) throws SQLException {
-        try(Connection connection = dataSource.getConnection()) {
+        try (Connection connection = dataSource.getConnection()) {
             return connection.getMetaData().getURL();
         }
     }
