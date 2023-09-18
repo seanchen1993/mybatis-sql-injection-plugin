@@ -27,7 +27,9 @@ import com.alibaba.druid.DbType;
 import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.druid.wall.Violation;
 import com.alibaba.druid.wall.WallCheckResult;
+import com.alibaba.druid.wall.WallConfig;
 import com.alibaba.druid.wall.WallProvider;
+import com.alibaba.druid.wall.spi.*;
 import com.alibaba.druid.wall.violation.SyntaxErrorViolation;
 import com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties;
 import org.apache.ibatis.executor.statement.StatementHandler;
@@ -206,7 +208,57 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     }
 
     private WallProvider createWallProvider(DbType dbType, PermitAndDenyCustomizer customizer, String url) {
-        return null;
+        WallProvider provider;
+        WallConfig config;
+
+        switch (dbType) {
+            case mysql:
+            case oceanbase:
+            case drds:
+            case mariadb:
+            case tidb:
+            case h2:
+            case presto:
+            case trino:
+                config = getWallConfig(dbType, customizer, MySqlWallProvider.DEFAULT_CONFIG_DIR);
+                provider = new MySqlWallProvider(config);
+                break;
+            case oracle:
+            case ali_oracle:
+            case oceanbase_oracle:
+                //case dm:
+                config = getWallConfig(dbType, customizer, OracleWallProvider.DEFAULT_CONFIG_DIR);
+                provider = new OracleWallProvider(config);
+                break;
+            case sqlserver:
+            case jtds:
+                config =  getWallConfig(dbType, customizer, SQLServerWallProvider.DEFAULT_CONFIG_DIR);
+                provider = new SQLServerWallProvider(config);
+                break;
+            case postgresql:
+            case edb:
+            case polardb:
+            case greenplum:
+            case gaussdb:
+                config =  getWallConfig(dbType, customizer, PGWallProvider.DEFAULT_CONFIG_DIR);
+                provider = new PGWallProvider(config);
+                break;
+            case db2:
+                config = getWallConfig(dbType, customizer, DB2WallProvider.DEFAULT_CONFIG_DIR);
+                provider = new DB2WallProvider(config);
+                break;
+            case sqlite:
+                config = getWallConfig(dbType, customizer, SQLiteWallProvider.DEFAULT_CONFIG_DIR);
+                provider = new SQLiteWallProvider(config);
+                break;
+            case clickhouse:
+                config = getWallConfig(dbType, customizer, ClickhouseWallProvider.DEFAULT_CONFIG_DIR);
+                provider = new ClickhouseWallProvider(config);
+                break;
+            default:
+                throw new IllegalStateException("dbType not support : " + dbType + ", url " + url);
+        }
+        return provider;
     }
 
     private boolean invalidExecuteTimes() {
@@ -219,4 +271,8 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
         }
     }
 
+
+    private WallConfig getWallConfig(DbType dbType, PermitAndDenyCustomizer customizer, String defaultConfigDir) {
+        return null;
+    }
 }
