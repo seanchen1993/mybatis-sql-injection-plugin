@@ -25,30 +25,32 @@ package com.github.sqlinjection.autoconfigure;
 
 import com.alibaba.druid.DbType;
 import com.alibaba.druid.util.JdbcUtils;
-import com.alibaba.druid.wall.Violation;
 import com.alibaba.druid.wall.WallCheckResult;
 import com.alibaba.druid.wall.WallConfig;
 import com.alibaba.druid.wall.WallProvider;
 import com.alibaba.druid.wall.spi.*;
-import com.alibaba.druid.wall.violation.SyntaxErrorViolation;
 import com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties;
 import com.github.sqlinjection.autoconfigure.utils.JsonUtils;
+import org.apache.ibatis.executor.statement.BaseStatementHandler;
+import org.apache.ibatis.executor.statement.RoutingStatementHandler;
 import org.apache.ibatis.executor.statement.StatementHandler;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.plugin.*;
-import org.apache.ibatis.reflection.MetaObject;
 import org.apache.ibatis.reflection.SystemMetaObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 
 import javax.sql.DataSource;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static com.github.sqlinjection.autoconfigure.PermitAndDenyCustomizer.DEFAULT_MYSQL_DENY_FUNCTIONS;
 import static org.apache.ibatis.mapping.StatementType.CALLABLE;
@@ -71,12 +73,25 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     private static final String STATEMENT_HANDLER_DELEGATE_MAPPED_STATEMENT = "delegate.mappedStatement";
 
     private static final String STATEMENT_HANDLER_DELEGATE_BOUND_SQL = "delegate.boundSql";
+    private static final Field PLUGIN_TARGET = accessibleField(Plugin.class, "target");
+    private static final Field ROUTING_DELEGATE = accessibleField(RoutingStatementHandler.class, "delegate");
+    private static final Field BASE_MAPPED_STATEMENT = accessibleField(BaseStatementHandler.class, "mappedStatement");
+
     private final Object sqlInjectionPluginMonitor = new Object();
     private final SqlInjectionProperties properties;
     private final PermitAndDenyCustomizer customizer;
+    private final SqlCheckDecisionCache decisionCache = new SqlCheckDecisionCache();
+    private final Function<String, SqlCheckDecisionCache.Decision> wallCheckLoader =
+            new Function<String, SqlCheckDecisionCache.Decision>() {
+                @Override
+                public SqlCheckDecisionCache.Decision apply(String sql) {
+                    return SqlCheckDecisionCache.Decision.from(invokeWallCheck(sql));
+                }
+            };
     private volatile int currentErrorCount = 0;
     private volatile WallProvider wallProvider;
     private volatile DbType dbType;
+    private volatile boolean cacheChecks;
 
     public SqlInjectionPluginInterceptor(SqlInjectionProperties properties, PermitAndDenyCustomizer customizer) {
         this.properties = properties;
@@ -86,11 +101,9 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
 
-        StatementHandler statementHandler = getTarget(invocation.getTarget());
+        StatementHandler statementHandler = unwrap(invocation.getTarget());
 
-        MetaObject metaObject = SystemMetaObject.forObject(statementHandler);
-
-        MappedStatement mappedStatement = (MappedStatement) metaObject.getValue(STATEMENT_HANDLER_DELEGATE_MAPPED_STATEMENT);
+        MappedStatement mappedStatement = mappedStatement(statementHandler);
 
         if (!properties.isSupportCallable() && CALLABLE.equals(mappedStatement.getStatementType())) {
             return invocation.proceed();
@@ -105,43 +118,46 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
             return invocation.proceed();
         }
 
-        BoundSql boundSql = (BoundSql) metaObject.getValue(STATEMENT_HANDLER_DELEGATE_BOUND_SQL);
-
-        String sqlToCheck = boundSql.getSql();
+        String sqlToCheck = boundSql(statementHandler).getSql();
 
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("The sql checked by sql injection plugin is: {}", sqlToCheck);
         }
 
-        WallCheckResult check = wallProvider.check(sqlToCheck);
+        SqlCheckDecisionCache.Decision decision = evaluate(sqlToCheck);
 
-        List<Violation> violations = check.getViolations();
-
-        if (violations.size() > 0) {
-            Violation firstViolation = violations.get(0);
+        if (decision.violation) {
             if (properties.isEnableWarningOnly()) {
-
-                LOGGER.warn("sql injection violation, dbType {}, {} : {}", dbType, firstViolation.getMessage(), sqlToCheck);
+                LOGGER.warn("sql injection violation, dbType {}, {} : {}", dbType, decision.message, sqlToCheck);
+            } else if (decision.syntaxError) {
+                throw new SQLException("sql injection violation, dbType: "
+                        + dbType
+                        + ", " + decision.message
+                        + ": " + sqlToCheck,
+                        decision.cause);
             } else {
-                if (firstViolation instanceof SyntaxErrorViolation) {
-                    SyntaxErrorViolation violation = (SyntaxErrorViolation) firstViolation;
-
-                    throw new SQLException("sql injection violation, dbType: "
-                            + dbType
-                            + ", " + firstViolation.getMessage()
-                            + ": " + sqlToCheck,
-                            violation.getException());
-                } else {
-
-                    throw new SQLException("sql injection violation, dbType: "
-                            + dbType
-                            + ", " + firstViolation.getMessage()
-                            + ": " + sqlToCheck);
-                }
+                throw new SQLException("sql injection violation, dbType: "
+                        + dbType
+                        + ", " + decision.message
+                        + ": " + sqlToCheck);
             }
         }
 
         return invocation.proceed();
+    }
+
+    /**
+     * Hook for tests that count how often Druid actually parses. Production calls go straight to the provider.
+     */
+    protected WallCheckResult invokeWallCheck(String sql) {
+        return wallProvider.check(sql);
+    }
+
+    private SqlCheckDecisionCache.Decision evaluate(String sql) {
+        if (!cacheChecks) {
+            return SqlCheckDecisionCache.Decision.from(invokeWallCheck(sql));
+        }
+        return decisionCache.getOrLoad(sql, wallCheckLoader);
     }
 
     @Override
@@ -157,13 +173,61 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
         //do nothing
     }
 
-    @SuppressWarnings("unchecked")
-    private <D> D getTarget(Object target) {
-        if (Proxy.isProxyClass(target.getClass())) {
-            MetaObject metaObject = SystemMetaObject.forObject(target);
-            return getTarget(metaObject.getValue(MYBATIS_PLUGIN_TARGET));
+    private StatementHandler unwrap(Object target) {
+        Object current = target;
+        while (current != null && Proxy.isProxyClass(current.getClass())) {
+            Object next = pluginTarget(current);
+            if (next == null || next == current) {
+                break;
+            }
+            current = next;
         }
-        return (D) target;
+        return (StatementHandler) current;
+    }
+
+    private Object pluginTarget(Object proxy) {
+        if (PLUGIN_TARGET != null) {
+            InvocationHandler handler = Proxy.getInvocationHandler(proxy);
+            if (handler instanceof Plugin) {
+                try {
+                    return PLUGIN_TARGET.get(handler);
+                } catch (IllegalAccessException ignored) {
+                    // Fall back to the MetaObject path below.
+                }
+            }
+        }
+        return SystemMetaObject.forObject(proxy).getValue(MYBATIS_PLUGIN_TARGET);
+    }
+
+    private MappedStatement mappedStatement(StatementHandler handler) {
+        if (handler instanceof RoutingStatementHandler && ROUTING_DELEGATE != null && BASE_MAPPED_STATEMENT != null) {
+            try {
+                Object delegate = ROUTING_DELEGATE.get(handler);
+                if (delegate != null) {
+                    return (MappedStatement) BASE_MAPPED_STATEMENT.get(delegate);
+                }
+            } catch (IllegalAccessException ignored) {
+                // Fall back to MetaObject.
+            }
+        }
+        return (MappedStatement) SystemMetaObject.forObject(handler).getValue(STATEMENT_HANDLER_DELEGATE_MAPPED_STATEMENT);
+    }
+
+    private BoundSql boundSql(StatementHandler handler) {
+        if (handler instanceof RoutingStatementHandler) {
+            return handler.getBoundSql();
+        }
+        return (BoundSql) SystemMetaObject.forObject(handler).getValue(STATEMENT_HANDLER_DELEGATE_BOUND_SQL);
+    }
+
+    private static Field accessibleField(Class<?> type, String name) {
+        try {
+            Field field = type.getDeclaredField(name);
+            field.setAccessible(true);
+            return field;
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
 
@@ -194,8 +258,9 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
 
                         dbType = DbType.of(dbTypeName);
 
-                        //init wall provider
-                        wallProvider = createWallProvider(dbType, customizer, url);
+                        WallProvider provider = createWallProvider(dbType, customizer, url);
+                        cacheChecks = SqlCheckDecisionCache.isRepeatable(provider.getConfig());
+                        wallProvider = provider;
 
                     } catch (Throwable throwable) {
                         LOGGER.error("Init druid wall provider error.", throwable);
