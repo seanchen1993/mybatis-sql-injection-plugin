@@ -117,6 +117,53 @@ public class SqlInjectionPluginInterceptorTest {
     }
 
     @Test
+    public void disabledDecisionCacheChecksEveryCallAndStillRejects() throws Exception {
+        SqlInjectionProperties properties = properties(false);
+        properties.setCacheEnabled(false);
+        CountingInterceptor interceptor = interceptor(properties, new PermitAndDenyCustomizer());
+        PreparedCall call = prepare(interceptor, SqlCheckPathBenchmark.VIOLATING_SQL, "com.example.Mapper.cacheOff");
+        expectSqlException(call);
+        expectSqlException(call);
+        assertEquals(0, call.handler.proceedCount);
+        assertEquals(2, interceptor.wallChecks.get());
+    }
+
+    @Test
+    public void configuredEntryLimitStopsCachingFurtherSql() throws Exception {
+        SqlInjectionProperties properties = properties(false);
+        properties.setCacheMaxEntries(1);
+        CountingInterceptor interceptor = interceptor(properties, new PermitAndDenyCustomizer());
+        PreparedCall first = prepare(interceptor, SqlCheckPathBenchmark.SAFE_SQL, "com.example.Mapper.one");
+        first.wrapped.prepare(null, 1);
+        first.wrapped.prepare(null, 1);
+        PreparedCall second = prepare(interceptor, "select id, name from accounts where id = 2", "com.example.Mapper.two");
+        second.wrapped.prepare(null, 1);
+        second.wrapped.prepare(null, 1);
+        assertEquals(3, interceptor.wallChecks.get());
+    }
+
+    @Test
+    public void nonPositiveCacheLimitIsRejectedWhileCacheStaysEnabled() {
+        SqlInjectionProperties properties = properties(false);
+        properties.setCacheMaxEntries(0);
+        try {
+            interceptor(properties, new PermitAndDenyCustomizer());
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException ex) {
+            assertTrue(ex.getMessage().contains("cache-max-entries"));
+            assertTrue(ex.getMessage().contains("cache-enabled"));
+        }
+        properties.setCacheMaxEntries(SqlInjectionProperties.DEFAULT_CACHE_MAX_ENTRIES);
+        properties.setCacheMaxSqlLength(-1);
+        try {
+            interceptor(properties, new PermitAndDenyCustomizer());
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException ex) {
+            assertTrue(ex.getMessage().contains("cache-max-sql-length"));
+        }
+    }
+
+    @Test
     public void privilegedWallConfigDoesNotReuseAnotherThreadsDecision() throws Exception {
         PermitAndDenyCustomizer customizer = new PermitAndDenyCustomizer();
         customizer.setDoPrivilegedAllow(true);

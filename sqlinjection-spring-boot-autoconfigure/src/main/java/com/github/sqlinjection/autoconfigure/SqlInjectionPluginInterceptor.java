@@ -80,7 +80,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     private final Object sqlInjectionPluginMonitor = new Object();
     private final SqlInjectionProperties properties;
     private final PermitAndDenyCustomizer customizer;
-    private final SqlCheckDecisionCache decisionCache = new SqlCheckDecisionCache();
+    private final SqlCheckDecisionCache decisionCache;
     private final Function<String, SqlCheckDecisionCache.Decision> wallCheckLoader =
             new Function<String, SqlCheckDecisionCache.Decision>() {
                 @Override
@@ -96,6 +96,25 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     public SqlInjectionPluginInterceptor(SqlInjectionProperties properties, PermitAndDenyCustomizer customizer) {
         this.properties = properties;
         this.customizer = customizer;
+        this.decisionCache = createDecisionCache(properties);
+    }
+
+    /**
+     * Non-positive limits are rejected while the cache is enabled. Set {@code cache-enabled=false}
+     * to turn the cache off; do not use 0 or a negative size for that.
+     */
+    static SqlCheckDecisionCache createDecisionCache(SqlInjectionProperties properties) {
+        if (properties == null || !properties.isCacheEnabled()) {
+            return null;
+        }
+        int maxEntries = properties.getCacheMaxEntries();
+        int maxSqlLength = properties.getCacheMaxSqlLength();
+        if (maxEntries <= 0 || maxSqlLength <= 0) {
+            throw new IllegalArgumentException("mybatis.plugin.sqlinjection.wall.cache-max-entries ("
+                    + maxEntries + ") and cache-max-sql-length (" + maxSqlLength
+                    + ") must be positive when cache-enabled is true. Set cache-enabled to false to disable the decision cache.");
+        }
+        return new SqlCheckDecisionCache(maxEntries, maxSqlLength);
     }
 
     @Override
@@ -154,7 +173,7 @@ public class SqlInjectionPluginInterceptor implements Interceptor {
     }
 
     private SqlCheckDecisionCache.Decision evaluate(String sql) {
-        if (!cacheChecks) {
+        if (decisionCache == null || !cacheChecks) {
             return SqlCheckDecisionCache.Decision.from(invokeWallCheck(sql));
         }
         return decisionCache.getOrLoad(sql, wallCheckLoader);

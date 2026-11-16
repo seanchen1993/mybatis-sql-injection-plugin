@@ -4,6 +4,7 @@ import com.alibaba.druid.wall.Violation;
 import com.alibaba.druid.wall.WallCheckResult;
 import com.alibaba.druid.wall.WallConfig;
 import com.alibaba.druid.wall.violation.SyntaxErrorViolation;
+import com.github.sqlinjection.autoconfigure.properties.SqlInjectionProperties;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,13 +16,14 @@ import java.util.function.Function;
  *
  * <p>The key is the SQL text passed to {@code WallProvider.check}. A stored decision is only valid
  * for the {@link WallConfig} that produced it, so the interceptor keeps one cache per provider and
- * does not use it when the config can vary by thread (privileged checks, tenant callbacks, update
- * handlers). Entries are capped by count and by SQL length. Puts take a lock; hits do not.
+ * does not use it when the config can vary by thread (privileged checks, tenant callbacks,
+ * tenant table patterns, or update handlers). A tenant callback or tenant table pattern bypasses
+ * this cache entirely. Entries are capped by count and by SQL length. Puts take a lock; hits do not.
  */
 final class SqlCheckDecisionCache {
 
-    static final int DEFAULT_MAX_ENTRIES = 1024;
-    static final int DEFAULT_MAX_SQL_LENGTH = 4096;
+    static final int DEFAULT_MAX_ENTRIES = SqlInjectionProperties.DEFAULT_CACHE_MAX_ENTRIES;
+    static final int DEFAULT_MAX_SQL_LENGTH = SqlInjectionProperties.DEFAULT_CACHE_MAX_SQL_LENGTH;
 
     private final int maxEntries;
     private final int maxSqlLength;

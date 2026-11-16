@@ -1,5 +1,6 @@
 package com.github.sqlinjection.autoconfigure;
 
+import com.alibaba.druid.wall.WallConfig;
 import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -145,5 +146,37 @@ public class SqlCheckDecisionCacheTest {
         assertEquals(0, mismatches.get());
         assertTrue(loads.get() >= 1);
         assertTrue(loads.get() < threads * perThread);
+    }
+
+    @Test
+    public void tenantCallbackOrTablePatternBypassesTheCache() {
+        WallConfig config = new WallConfig();
+        assertTrue(SqlCheckDecisionCache.isRepeatable(config));
+
+        config.setTenantTablePattern("user");
+        assertFalse(SqlCheckDecisionCache.isRepeatable(config));
+
+        config.setTenantTablePattern(null);
+        config.setTenantCallBack(new WallConfig.TenantCallBack() {
+            @Override
+            public Object getTenantValue(WallConfig.TenantCallBack.StatementType statementType, String tableName) {
+                return null;
+            }
+
+            @Override
+            public String getTenantColumn(WallConfig.TenantCallBack.StatementType statementType, String tableName) {
+                return null;
+            }
+
+            @Override
+            public String getHiddenColumn(String tableName) {
+                return null;
+            }
+
+            @Override
+            public void filterResultsetTenantColumn(Object value) {
+            }
+        });
+        assertFalse(SqlCheckDecisionCache.isRepeatable(config));
     }
 }

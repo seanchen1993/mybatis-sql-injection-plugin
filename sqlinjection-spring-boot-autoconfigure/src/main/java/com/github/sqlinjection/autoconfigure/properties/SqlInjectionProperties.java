@@ -41,6 +41,10 @@ public class SqlInjectionProperties {
 
     public static final String SQL_INJECTION_PREFIX = "mybatis.plugin.sqlinjection.wall";
 
+    public static final int DEFAULT_CACHE_MAX_ENTRIES = 1024;
+
+    public static final int DEFAULT_CACHE_MAX_SQL_LENGTH = 4096;
+
     /**
      * just enable warning，default is false
      */
@@ -55,6 +59,22 @@ public class SqlInjectionProperties {
      * Which sql needs to be skipped, that is, sql whitelist
      */
     private Set<String> ignoredStatements = new LinkedHashSet<>();
+
+    /**
+     * Reuse a Wall decision for the same SQL text. Default is true.
+     * Set to false to call Druid on every prepare. Non-positive cache limits are rejected while this stays true.
+     */
+    private boolean cacheEnabled = true;
+
+    /**
+     * Maximum distinct SQL texts stored in the decision cache.
+     */
+    private int cacheMaxEntries = DEFAULT_CACHE_MAX_ENTRIES;
+
+    /**
+     * SQL text longer than this is checked every time and is not stored.
+     */
+    private int cacheMaxSqlLength = DEFAULT_CACHE_MAX_SQL_LENGTH;
 
 
     public boolean isEnableWarningOnly() {
@@ -79,5 +99,29 @@ public class SqlInjectionProperties {
 
     public void setIgnoredStatements(Set<String> ignoredStatements) {
         this.ignoredStatements = ignoredStatements;
+    }
+
+    public boolean isCacheEnabled() {
+        return cacheEnabled;
+    }
+
+    public void setCacheEnabled(boolean cacheEnabled) {
+        this.cacheEnabled = cacheEnabled;
+    }
+
+    public int getCacheMaxEntries() {
+        return cacheMaxEntries;
+    }
+
+    public void setCacheMaxEntries(int cacheMaxEntries) {
+        this.cacheMaxEntries = cacheMaxEntries;
+    }
+
+    public int getCacheMaxSqlLength() {
+        return cacheMaxSqlLength;
+    }
+
+    public void setCacheMaxSqlLength(int cacheMaxSqlLength) {
+        this.cacheMaxSqlLength = cacheMaxSqlLength;
     }
 }
